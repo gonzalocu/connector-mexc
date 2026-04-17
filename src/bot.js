@@ -3,6 +3,7 @@ const MexcClient = require('./mexcClient');
 const MexcWebSocket = require('./mexcWebSocket');
 const GridStrategy = require('./strategies/gridStrategy');
 const MAStrategy = require('./strategies/maStrategy');
+const VwapRsiStrategy = require('./strategies/vwapRsiStrategy');
 const logger = require('./utils/logger');
 
 const POLL_INTERVAL_MS = 60 * 1000; // 1 minute for MA / order check polling
@@ -40,6 +41,11 @@ class Bot {
       this.strategy.start();
       await this.strategy.run(); // run once immediately
       this._startMAPolling();
+    } else if (config.trading.strategy === 'vwap-rsi') {
+      this.strategy = new VwapRsiStrategy(this.client);
+      this.strategy.start();
+      await this.strategy.run(); // run once immediately
+      this._startVwapRsiPolling();
     } else {
       throw new Error(`Unknown strategy: ${config.trading.strategy}`);
     }
@@ -61,7 +67,6 @@ class Bot {
   }
 
   _startMAPolling() {
-    // Determine poll frequency based on candle interval
     const intervalMs = this._intervalToMs(config.ma.interval);
     this.pollTimer = setInterval(async () => {
       if (!this.running) return;
@@ -69,6 +74,16 @@ class Bot {
       this._printStatus();
     }, intervalMs);
     logger.info(`MA polling every ${intervalMs / 1000}s`);
+  }
+
+  _startVwapRsiPolling() {
+    const intervalMs = this._intervalToMs(config.vwapRsi.interval);
+    this.pollTimer = setInterval(async () => {
+      if (!this.running) return;
+      await this.strategy.run();
+      this._printStatus();
+    }, intervalMs);
+    logger.info(`VWAP+RSI polling every ${intervalMs / 1000}s`);
   }
 
   _intervalToMs(interval) {

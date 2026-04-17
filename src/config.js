@@ -25,6 +25,15 @@ const config = {
     interval: process.env.MA_INTERVAL || '1h',
     orderAmount: parseFloat(process.env.MA_ORDER_AMOUNT || '0.001'),
   },
+  vwapRsi: {
+    interval: process.env.VWAP_RSI_INTERVAL || '15m',
+    rsiPeriod: parseInt(process.env.RSI_PERIOD || '14', 10),
+    rsiOversold: parseFloat(process.env.RSI_OVERSOLD || '30'),
+    rsiOverbought: parseFloat(process.env.RSI_OVERBOUGHT || '70'),
+    vwapTolerance: parseFloat(process.env.VWAP_TOLERANCE || '0.5'),
+    orderAmount: parseFloat(process.env.VWAP_RSI_ORDER_AMOUNT || '0.001'),
+    mode: process.env.VWAP_RSI_MODE || 'reversion', // 'reversion' | 'momentum'
+  },
   log: {
     level: process.env.LOG_LEVEL || 'info',
   },
@@ -39,6 +48,12 @@ function validate() {
   }
   if (config.ma.shortPeriod >= config.ma.longPeriod) {
     throw new Error('MA_SHORT_PERIOD must be less than MA_LONG_PERIOD');
+  }
+  if (config.vwapRsi.rsiOversold >= config.vwapRsi.rsiOverbought) {
+    throw new Error('RSI_OVERSOLD must be less than RSI_OVERBOUGHT');
+  }
+  if (!['reversion', 'momentum'].includes(config.vwapRsi.mode)) {
+    throw new Error('VWAP_RSI_MODE must be "reversion" or "momentum"');
   }
 }
 
