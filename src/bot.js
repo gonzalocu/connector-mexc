@@ -4,14 +4,16 @@ const MexcWebSocket = require('./mexcWebSocket');
 const GridStrategy = require('./strategies/gridStrategy');
 const MAStrategy = require('./strategies/maStrategy');
 const VwapRsiStrategy = require('./strategies/vwapRsiStrategy');
+const AlertManager = require('./alerts/alertManager');
 const logger = require('./utils/logger');
 
-const POLL_INTERVAL_MS = 60 * 1000; // 1 minute for MA / order check polling
+const POLL_INTERVAL_MS = 60 * 1000;
 
 class Bot {
   constructor() {
     this.client = new MexcClient();
     this.ws = new MexcWebSocket();
+    this.alerts = new AlertManager();
     this.strategy = null;
     this.pollTimer = null;
     this.running = false;
@@ -33,18 +35,18 @@ class Bot {
 
     // Instantiate and start the selected strategy
     if (config.trading.strategy === 'grid') {
-      this.strategy = new GridStrategy(this.client);
+      this.strategy = new GridStrategy(this.client, this.alerts);
       await this.strategy.start();
       this._startGridPolling();
     } else if (config.trading.strategy === 'ma') {
-      this.strategy = new MAStrategy(this.client);
+      this.strategy = new MAStrategy(this.client, this.alerts);
       this.strategy.start();
-      await this.strategy.run(); // run once immediately
+      await this.strategy.run();
       this._startMAPolling();
     } else if (config.trading.strategy === 'vwap-rsi') {
-      this.strategy = new VwapRsiStrategy(this.client);
+      this.strategy = new VwapRsiStrategy(this.client, this.alerts);
       this.strategy.start();
-      await this.strategy.run(); // run once immediately
+      await this.strategy.run();
       this._startVwapRsiPolling();
     } else {
       throw new Error(`Unknown strategy: ${config.trading.strategy}`);
@@ -52,6 +54,7 @@ class Bot {
 
     this.running = true;
     this._printStatus();
+    await this.alerts.botStart();
 
     // Graceful shutdown
     process.on('SIGINT', () => this.stop());
@@ -106,6 +109,7 @@ class Bot {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.strategy) await this.strategy.stop();
     this.ws.disconnect();
+    await this.alerts.botStop();
 
     logger.info('Bot stopped.');
     process.exit(0);

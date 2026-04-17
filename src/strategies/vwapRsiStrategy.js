@@ -19,8 +19,9 @@ const logger = require('../utils/logger');
  *   SELL when price < VWAP OR RSI < 50
  */
 class VwapRsiStrategy {
-  constructor(client) {
+  constructor(client, alerts = null) {
     this.client = client;
+    this.alerts = alerts;
     this.symbol = config.trading.symbol;
     this.interval = config.vwapRsi.interval;
     this.rsiPeriod = config.vwapRsi.rsiPeriod;
@@ -87,6 +88,7 @@ class VwapRsiStrategy {
 
     } catch (err) {
       logger.error(`VWAP/RSI strategy error: ${err.message}`);
+      if (this.alerts) await this.alerts.error(`VWAP/RSI error: ${err.message}`);
     }
   }
 
@@ -105,6 +107,7 @@ class VwapRsiStrategy {
           `[REVERSION] BUY signal | RSI crossed up: ${this.prevRsi} → ${currentRsi} | ` +
           `Price: ${price} | VWAP: ${currentVwap}`
         );
+        if (this.alerts) await this.alerts.signal({ side: 'BUY', price, indicator: `RSI(${this.rsiPeriod})`, value: `${this.prevRsi}→${currentRsi} (VWAP: ${currentVwap})` });
         await this._openLong(price);
       }
     } else {
@@ -117,6 +120,7 @@ class VwapRsiStrategy {
           ? `RSI overbought (${currentRsi})`
           : `Price above VWAP+${this.vwapTolerance}% (${price} vs ${currentVwap})`;
         logger.info(`[REVERSION] SELL signal | ${reason}`);
+        if (this.alerts) await this.alerts.signal({ side: 'SELL', price, indicator: `RSI(${this.rsiPeriod})`, value: reason });
         await this._closeLong(price);
       }
     }
@@ -134,6 +138,7 @@ class VwapRsiStrategy {
           `[MOMENTUM] BUY signal | Price: ${price} > VWAP: ${currentVwap} | ` +
           `RSI: ${this.prevRsi} → ${currentRsi}`
         );
+        if (this.alerts) await this.alerts.signal({ side: 'BUY', price, indicator: `RSI(${this.rsiPeriod})`, value: `${currentRsi} (VWAP: ${currentVwap})` });
         await this._openLong(price);
       }
     } else {
@@ -143,6 +148,7 @@ class VwapRsiStrategy {
           ? `Price below VWAP (${price} < ${currentVwap})`
           : `RSI below 50 (${currentRsi})`;
         logger.info(`[MOMENTUM] SELL signal | ${reason}`);
+        if (this.alerts) await this.alerts.signal({ side: 'SELL', price, indicator: `RSI(${this.rsiPeriod})`, value: reason });
         await this._closeLong(price);
       }
     }
@@ -158,6 +164,7 @@ class VwapRsiStrategy {
     this.position = 'long';
     this.entryPrice = price;
     logger.info(`Long opened @ ~${price}`);
+    if (this.alerts) await this.alerts.positionOpen({ price });
   }
 
   async _closeLong(price) {
@@ -171,6 +178,7 @@ class VwapRsiStrategy {
       ? ((price - this.entryPrice) / this.entryPrice * 100).toFixed(3)
       : 'n/a';
     logger.info(`Long closed @ ~${price} | PnL: ${pnl}%`);
+    if (this.alerts) await this.alerts.positionClose({ price, pnlPct: pnl });
     this.position = null;
     this.entryPrice = null;
   }

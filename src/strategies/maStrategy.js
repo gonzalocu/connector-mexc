@@ -2,14 +2,16 @@ const { config } = require('../config');
 const logger = require('../utils/logger');
 
 class MAStrategy {
-  constructor(client) {
+  constructor(client, alerts = null) {
     this.client = client;
+    this.alerts = alerts;
     this.symbol = config.trading.symbol;
     this.shortPeriod = config.ma.shortPeriod;
     this.longPeriod = config.ma.longPeriod;
     this.interval = config.ma.interval;
     this.orderAmount = config.ma.orderAmount;
     this.position = null; // 'long' | null
+    this.entryPrice = null;
     this.lastSignal = null;
     this.running = false;
   }
@@ -64,6 +66,7 @@ class MAStrategy {
 
       if (signal === 'BUY' && this.position !== 'long') {
         logger.info(`MA Crossover UP detected @ ${currentPrice} - Opening LONG`);
+        if (this.alerts) await this.alerts.signal({ side: 'BUY', price: currentPrice, indicator: `MA${this.shortPeriod}/${this.longPeriod}`, value: 'crossover UP' });
         await this.client.placeOrder({
           symbol: this.symbol,
           side: 'BUY',
@@ -71,22 +74,31 @@ class MAStrategy {
           quantity: this.orderAmount,
         });
         this.position = 'long';
+        this.entryPrice = currentPrice;
+        if (this.alerts) await this.alerts.positionOpen({ price: currentPrice });
 
       } else if (signal === 'SELL' && this.position === 'long') {
         logger.info(`MA Crossover DOWN detected @ ${currentPrice} - Closing LONG`);
+        if (this.alerts) await this.alerts.signal({ side: 'SELL', price: currentPrice, indicator: `MA${this.shortPeriod}/${this.longPeriod}`, value: 'crossover DOWN' });
         await this.client.placeOrder({
           symbol: this.symbol,
           side: 'SELL',
           type: 'MARKET',
           quantity: this.orderAmount,
         });
+        const pnlPct = this.entryPrice
+          ? ((currentPrice - this.entryPrice) / this.entryPrice * 100).toFixed(3)
+          : 'n/a';
+        if (this.alerts) await this.alerts.positionClose({ price: currentPrice, pnlPct });
         this.position = null;
+        this.entryPrice = null;
       }
 
       this.lastSignal = signal;
 
     } catch (err) {
       logger.error(`MA strategy error: ${err.message}`);
+      if (this.alerts) await this.alerts.error(`MA strategy error: ${err.message}`);
     }
   }
 

@@ -34,6 +34,27 @@ const config = {
     orderAmount: parseFloat(process.env.VWAP_RSI_ORDER_AMOUNT || '0.001'),
     mode: process.env.VWAP_RSI_MODE || 'reversion', // 'reversion' | 'momentum'
   },
+  alerts: {
+    telegram: {
+      botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+      chatId: process.env.TELEGRAM_CHAT_ID || '',
+    },
+    discord: {
+      webhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
+    },
+    email: {
+      host: process.env.EMAIL_HOST || '',
+      port: process.env.EMAIL_PORT || '587',
+      user: process.env.EMAIL_USER || '',
+      pass: process.env.EMAIL_PASS || '',
+      from: process.env.EMAIL_FROM || '',
+      to: process.env.EMAIL_TO || '',
+    },
+    webhook: {
+      url: process.env.ALERT_WEBHOOK_URL || '',
+      secret: process.env.ALERT_WEBHOOK_SECRET || '',
+    },
+  },
   log: {
     level: process.env.LOG_LEVEL || 'info',
   },

@@ -2,8 +2,9 @@ const { config } = require('../config');
 const logger = require('../utils/logger');
 
 class GridStrategy {
-  constructor(client) {
+  constructor(client, alerts = null) {
     this.client = client;
+    this.alerts = alerts;
     this.symbol = config.trading.symbol;
     this.upperPrice = config.grid.upperPrice;
     this.lowerPrice = config.grid.lowerPrice;
@@ -78,6 +79,9 @@ class GridStrategy {
     if (!this.running) return;
 
     logger.info(`Order filled: ${filledSide} @ ${filledPrice}`);
+    if (this.alerts) {
+      await this.alerts.gridFill({ side: filledSide, price: filledPrice, orderId: this.activeOrders.get(filledPrice) || 'unknown' });
+    }
     this.activeOrders.delete(filledPrice);
 
     // Place opposite order at the adjacent grid level
@@ -132,6 +136,7 @@ class GridStrategy {
       }
     } catch (err) {
       logger.error(`Error checking filled orders: ${err.message}`);
+      if (this.alerts) await this.alerts.error(`Grid check error: ${err.message}`);
     }
   }
 
