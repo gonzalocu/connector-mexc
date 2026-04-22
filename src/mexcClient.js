@@ -14,10 +14,7 @@ class MexcClient {
     this.http = axios.create({
       baseURL: this.baseUrl,
       timeout: 10000,
-      headers: {
-        'X-MEXC-APIKEY': this.apiKey,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers: { 'X-MEXC-APIKEY': this.apiKey },
     });
   }
 
@@ -58,10 +55,10 @@ class MexcClient {
 
   async _post(path, params = {}) {
     try {
-      const body = this._sign(params);
-      const res = await this.http.post(path, body, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
+      // URLSearchParams as body makes axios set Content-Type: application/x-www-form-urlencoded
+      // automatically and keeps GET/DELETE requests free of that header.
+      const body = new URLSearchParams(this._sign(params));
+      const res = await this.http.post(path, body);
       return res.data;
     } catch (err) {
       throw this._extractError(err);
