@@ -77,19 +77,20 @@ class MexcClient {
     }
   }
 
-  // POST: all signed params go in the URL query string, no request body.
-  // totalParams = queryString only → signature matches what we computed.
-  // Content-Type: application/json is required by MEXC Spot (rejects form-encoded).
+  // POST: params (including timestamp + signature) go in the JSON body.
+  // Signature is computed over the query-string representation of params
+  // (matching the MEXC docs examples), then everything is sent as JSON.
   async _post(path, params = {}) {
     try {
-      const finalParams = this._addAuthParams(params);
-      const qs = this._buildQuery(finalParams);
-      const url = `${path}?${qs}`;
+      const withTime = { ...params, timestamp: Date.now() };
+      const qs = this._buildQuery(withTime);          // sign over this
+      const signature = this._sign(qs);
+      const body = { ...withTime, signature };
       const headers = {
         'X-MEXC-APIKEY': this.apiKey,
         'Content-Type': 'application/json',
       };
-      const res = await this.http.post(url, null, { headers });
+      const res = await this.http.post(path, body, { headers });
       return this._checkError(res.data);
     } catch (err) {
       if (err.message.startsWith('MEXC')) throw err;
