@@ -15,11 +15,6 @@ class MexcClient {
       baseURL: this.baseUrl,
       timeout: 10000,
     });
-    // Axios sets Content-Type: application/json for POST by default, which makes
-    // MEXC look for the signature in the JSON body instead of the query string.
-    // Remove it so MEXC reads params (including signature) from the query string,
-    // matching how _get and _delete work.
-    delete this.http.defaults.headers.post['Content-Type'];
   }
 
   // ─── Authentication ───────────────────────────────────────────────────────
@@ -82,16 +77,17 @@ class MexcClient {
     }
   }
 
-  // POST /api/v3/* — signed params in URL query string, no body.
-  // Same pattern as _delete and _get. The default Content-Type for POST is
-  // removed in the constructor so MEXC reads params from the query string.
+  // POST /api/v3/* — params (including timestamp + signature) sent in JSON body.
+  // MEXC requires Content-Type: application/json for POST.
+  // Signature is computed over the query-string representation of params
+  // (per docs examples), then everything is sent as a JSON object.
   async _post(path, params = {}) {
     try {
-      const finalParams = this._addAuthParams(params);
-      const qs = this._buildQuery(finalParams);
-      const url = `${path}?${qs}`;
-      const res = await this.http.post(url, null, {
-        headers: { 'X-MEXC-APIKEY': this.apiKey },
+      const withTime = { ...params, timestamp: Date.now() };
+      const qs = this._buildQuery(withTime);
+      const body = { ...withTime, signature: this._sign(qs) };
+      const res = await this.http.post(path, body, {
+        headers: { 'X-MEXC-APIKEY': this.apiKey, 'Content-Type': 'application/json' },
       });
       return this._checkError(res.data);
     } catch (err) {
