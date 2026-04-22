@@ -12,6 +12,7 @@ const config = {
     strategy: process.env.TRADING_STRATEGY || 'grid',
     dryRun: process.env.DRY_RUN !== 'false',
     maxOpenOrders: parseInt(process.env.MAX_OPEN_ORDERS || '20', 10),
+    quoteAsset: process.env.QUOTE_ASSET || 'USDT',
   },
   grid: {
     upperPrice: parseFloat(process.env.GRID_UPPER_PRICE || '70000'),
