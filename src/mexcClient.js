@@ -20,15 +20,25 @@ class MexcClient {
 
   // ─── Signing ──────────────────────────────────────────────────────────────
 
-  _sign(params) {
-    const query = Object.entries({ ...params, recvWindow: 5000, timestamp: Date.now() })
+  // Returns signed params as a plain object (used for JSON body in POST).
+  _signedParams(params) {
+    const all = { ...params, recvWindow: 5000, timestamp: Date.now() };
+    const queryString = Object.entries(all)
       .map(([k, v]) => `${k}=${v}`)
       .join('&');
     const signature = crypto
       .createHmac('sha256', this.secretKey)
-      .update(query)
+      .update(queryString)
       .digest('hex');
-    return `${query}&signature=${signature}`;
+    return { ...all, signature };
+  }
+
+  // Returns signed query string (used for GET / DELETE).
+  _signedQuery(params) {
+    const signed = this._signedParams(params);
+    return Object.entries(signed)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('&');
   }
 
   // ─── HTTP helpers ─────────────────────────────────────────────────────────
@@ -44,7 +54,9 @@ class MexcClient {
 
   async _get(path, params = {}, signed = false) {
     try {
-      const query = signed ? this._sign(params) : new URLSearchParams(params).toString();
+      const query = signed
+        ? this._signedQuery(params)
+        : new URLSearchParams(params).toString();
       const url = query ? `${path}?${query}` : path;
       const res = await this.http.get(url);
       return res.data;
@@ -55,10 +67,9 @@ class MexcClient {
 
   async _post(path, params = {}) {
     try {
-      // URLSearchParams as body makes axios set Content-Type: application/x-www-form-urlencoded
-      // automatically and keeps GET/DELETE requests free of that header.
-      const body = new URLSearchParams(this._sign(params));
-      const res = await this.http.post(path, body);
+      // Send signed params as JSON body — MEXC docs require application/json.
+      // axios uses application/json by default when the body is a plain object.
+      const res = await this.http.post(path, this._signedParams(params));
       return res.data;
     } catch (err) {
       throw this._extractError(err);
@@ -67,8 +78,7 @@ class MexcClient {
 
   async _delete(path, params = {}) {
     try {
-      const query = this._sign(params);
-      const res = await this.http.delete(`${path}?${query}`);
+      const res = await this.http.delete(`${path}?${this._signedQuery(params)}`);
       return res.data;
     } catch (err) {
       throw this._extractError(err);
