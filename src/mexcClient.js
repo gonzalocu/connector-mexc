@@ -77,20 +77,16 @@ class MexcClient {
     }
   }
 
-  // POST: params (including timestamp + signature) go in the JSON body.
-  // Signature is computed over the query-string representation of params
-  // (matching the MEXC docs examples), then everything is sent as JSON.
+  // POST /api/v3/* — all signed params (including timestamp + signature) go in
+  // the URL query string with no request body, matching the MEXC docs example:
+  // POST /api/v3/order?symbol=…&timestamp=…&signature=…
   async _post(path, params = {}) {
     try {
-      const withTime = { ...params, timestamp: Date.now() };
-      const qs = this._buildQuery(withTime);          // sign over this
-      const signature = this._sign(qs);
-      const body = { ...withTime, signature };
-      const headers = {
-        'X-MEXC-APIKEY': this.apiKey,
-        'Content-Type': 'application/json',
-      };
-      const res = await this.http.post(path, body, { headers });
+      const finalParams = this._addAuthParams(params);
+      const qs = this._buildQuery(finalParams);
+      const url = `${path}?${qs}`;
+      const headers = { 'X-MEXC-APIKEY': this.apiKey };
+      const res = await this.http.post(url, undefined, { headers });
       return this._checkError(res.data);
     } catch (err) {
       if (err.message.startsWith('MEXC')) throw err;
@@ -265,7 +261,8 @@ class MexcClient {
 
   // POST /api/v3/order — Place a new order
   // side: 'BUY' | 'SELL'
-  // type: 'LIMIT' | 'MARKET'
+  // type: 'LIMIT' | 'MARKET' (MARKET is converted to an aggressive LIMIT to
+  // avoid MEXC's quoteOrderQty requirement for MARKET BUY)
   async placeOrder({ symbol, side, type = 'LIMIT', price, quantity }) {
     const info = await this.getSymbolInfo(symbol);
 
@@ -273,6 +270,13 @@ class MexcClient {
       info.minQty,
       this._roundToStep(quantity, info.stepSize)
     );
+
+    // Convert MARKET to an aggressive LIMIT (±1% slippage) that fills instantly
+    if (type === 'MARKET') {
+      const currentPrice = await this.getPrice(symbol);
+      price = side === 'BUY' ? currentPrice * 1.01 : currentPrice * 0.99;
+      type = 'LIMIT';
+    }
 
     const params = { symbol, side, type, quantity: qty };
 
