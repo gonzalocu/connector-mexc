@@ -77,16 +77,18 @@ class MexcClient {
     }
   }
 
-  // POST sends params as application/x-www-form-urlencoded body
+  // POST: signed params go in query string, body is empty JSON object.
+  // MEXC Spot requires Content-Type: application/json and rejects form-encoded.
   async _post(path, params = {}) {
     try {
       const finalParams = this._addAuthParams(params);
-      const body = this._buildQuery(finalParams);
+      const qs = this._buildQuery(finalParams);
+      const url = `${path}?${qs}`;
       const headers = {
         'X-MEXC-APIKEY': this.apiKey,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       };
-      const res = await this.http.post(path, body, { headers });
+      const res = await this.http.post(url, {}, { headers });
       return this._checkError(res.data);
     } catch (err) {
       if (err.message.startsWith('MEXC')) throw err;
