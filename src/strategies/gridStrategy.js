@@ -10,6 +10,8 @@ class GridStrategy {
     this.lowerPrice = config.grid.lowerPrice;
     this.levels = config.grid.levels;
     this.orderAmount = config.grid.orderAmount;
+    this.quoteAsset = config.trading.quoteAsset;
+    this.baseAsset = this.symbol.replace(this.quoteAsset, '');
     this.gridLines = [];
     this.activeOrders = new Map(); // price -> orderId
     this.running = false;
@@ -52,9 +54,37 @@ class GridStrategy {
       await this.client.cancelAllOrders(this.symbol);
     }
 
+    const baseBalance = await this.client.getBalance(this.baseAsset);
+    const quoteBalance = await this.client.getBalance(this.quoteAsset);
+    let availableBase = baseBalance.free;
+    let availableQuote = quoteBalance.free;
+
+    logger.info(
+      `Balance: ${availableBase} ${this.baseAsset}, ${availableQuote} ${this.quoteAsset}`
+    );
+
     for (const price of this.gridLines) {
-      const side = price < currentPrice ? 'BUY' : 'SELL';
       if (price === currentPrice) continue;
+      const side = price < currentPrice ? 'BUY' : 'SELL';
+
+      if (side === 'SELL') {
+        if (availableBase < this.orderAmount) {
+          logger.warn(
+            `Skipping SELL at ${price}: need ${this.orderAmount} ${this.baseAsset}, have ${availableBase.toFixed(6)}`
+          );
+          continue;
+        }
+        availableBase -= this.orderAmount;
+      } else {
+        const cost = this.orderAmount * price;
+        if (availableQuote < cost) {
+          logger.warn(
+            `Skipping BUY at ${price}: need ${cost.toFixed(2)} ${this.quoteAsset}, have ${availableQuote.toFixed(2)}`
+          );
+          continue;
+        }
+        availableQuote -= cost;
+      }
 
       try {
         const order = await this.client.placeOrder({
