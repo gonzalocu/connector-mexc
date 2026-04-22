@@ -78,15 +78,19 @@ class MexcClient {
   }
 
   // POST /api/v3/* — all signed params (including timestamp + signature) go in
-  // the URL query string with no request body, matching the MEXC docs example:
-  // POST /api/v3/order?symbol=…&timestamp=…&signature=…
+  // the request body as application/x-www-form-urlencoded, matching the curl
+  // examples in the MEXC auth docs:
+  //   curl -d 'symbol=…&timestamp=…&signature=…' POST /api/v3/order
   async _post(path, params = {}) {
     try {
-      const finalParams = this._addAuthParams(params);
-      const qs = this._buildQuery(finalParams);
-      const url = `${path}?${qs}`;
-      const headers = { 'X-MEXC-APIKEY': this.apiKey };
-      const res = await this.http.post(url, undefined, { headers });
+      const withTime = { ...params, timestamp: Date.now() };
+      const qs = this._buildQuery(withTime);
+      const body = `${qs}&signature=${this._sign(qs)}`;
+      const headers = {
+        'X-MEXC-APIKEY': this.apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      const res = await this.http.post(path, body, { headers });
       return this._checkError(res.data);
     } catch (err) {
       if (err.message.startsWith('MEXC')) throw err;
