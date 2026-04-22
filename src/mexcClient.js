@@ -14,7 +14,10 @@ class MexcClient {
     this.http = axios.create({
       baseURL: this.baseUrl,
       timeout: 10000,
-      headers: { 'X-MEXC-APIKEY': this.apiKey },
+      headers: {
+        'X-MEXC-APIKEY': this.apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
     });
   }
 
@@ -56,7 +59,8 @@ class MexcClient {
   async _post(path, params = {}) {
     try {
       const query = this._sign(params);
-      const res = await this.http.post(`${path}?${query}`);
+      // Pass empty string body so axios keeps Content-Type: application/x-www-form-urlencoded
+      const res = await this.http.post(`${path}?${query}`, '');
       return res.data;
     } catch (err) {
       throw this._extractError(err);
