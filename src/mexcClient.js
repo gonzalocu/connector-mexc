@@ -16,6 +16,10 @@ class MexcClient {
       timeout: 10000,
       headers: { 'X-MEXC-APIKEY': this.apiKey },
     });
+
+    // axios v1 adds Content-Type: application/json to POST by default even with
+    // no body, causing MEXC error 700013. Remove it so POST goes out header-free.
+    delete this.http.defaults.headers.post['Content-Type'];
   }
 
   // ─── Signing ──────────────────────────────────────────────────────────────
@@ -67,9 +71,9 @@ class MexcClient {
 
   async _post(path, params = {}) {
     try {
-      // Send signed params as JSON body — MEXC docs require application/json.
-      // axios uses application/json by default when the body is a plain object.
-      const res = await this.http.post(path, this._signedParams(params));
+      // MEXC Spot v3: signature must be in the query string, not the body.
+      // No body is sent — Content-Type default was removed in the constructor.
+      const res = await this.http.post(`${path}?${this._signedQuery(params)}`);
       return res.data;
     } catch (err) {
       throw this._extractError(err);
