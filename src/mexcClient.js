@@ -14,38 +14,37 @@ class MexcClient {
     this.http = axios.create({
       baseURL: this.baseUrl,
       timeout: 10000,
-      headers: { 'X-MEXC-APIKEY': this.apiKey },
     });
-
-    // axios v1 adds Content-Type: application/json to POST by default even with
-    // no body, causing MEXC error 700013. Remove it so POST goes out header-free.
-    delete this.http.defaults.headers.post['Content-Type'];
   }
 
   // ─── Signing ──────────────────────────────────────────────────────────────
 
-  // Returns signed params as a plain object (used for JSON body in POST).
-  _signedParams(params) {
-    const all = { ...params, recvWindow: 5000, timestamp: Date.now() };
-    const queryString = Object.entries(all)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('&');
+  // Signature = HMAC-SHA256( apiKey + timestamp + paramString )
+  _buildAuthHeaders(paramString) {
+    const timestamp = String(Date.now());
+    const toSign = this.apiKey + timestamp + paramString;
     const signature = crypto
       .createHmac('sha256', this.secretKey)
-      .update(queryString)
+      .update(toSign)
       .digest('hex');
-    return { ...all, signature };
+    return {
+      'ApiKey': this.apiKey,
+      'Request-Time': timestamp,
+      'Signature': signature,
+      'Content-Type': 'application/json',
+    };
   }
 
-  // Returns signed query string (used for GET / DELETE).
-  _signedQuery(params) {
-    const signed = this._signedParams(params);
-    return Object.entries(signed)
+  // GET / DELETE: sort params alphabetically, filter nulls, join with &
+  _buildQuery(params) {
+    return Object.entries(params)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}=${v}`)
       .join('&');
   }
 
-  // ─── HTTP helpers ─────────────────────────────────────────────────────────
+  // ─── Error handling ───────────────────────────────────────────────────────
 
   _extractError(err) {
     if (err.response) {
@@ -56,33 +55,39 @@ class MexcClient {
     return err;
   }
 
+  // ─── HTTP helpers ─────────────────────────────────────────────────────────
+
   async _get(path, params = {}, signed = false) {
     try {
-      const query = signed
-        ? this._signedQuery(params)
-        : new URLSearchParams(params).toString();
+      const query = this._buildQuery(params);
       const url = query ? `${path}?${query}` : path;
-      const res = await this.http.get(url);
+      const headers = signed ? this._buildAuthHeaders(query) : {};
+      const res = await this.http.get(url, { headers });
       return res.data;
     } catch (err) {
       throw this._extractError(err);
     }
   }
 
+  // POST: JSON body, sign over the raw JSON string
   async _post(path, params = {}) {
     try {
-      // MEXC Spot v3: signature must be in the query string, not the body.
-      // No body is sent — Content-Type default was removed in the constructor.
-      const res = await this.http.post(`${path}?${this._signedQuery(params)}`);
+      const bodyStr = JSON.stringify(params);
+      const headers = this._buildAuthHeaders(bodyStr);
+      const res = await this.http.post(path, params, { headers });
       return res.data;
     } catch (err) {
       throw this._extractError(err);
     }
   }
 
+  // DELETE: params in query string, signed same as GET
   async _delete(path, params = {}) {
     try {
-      const res = await this.http.delete(`${path}?${this._signedQuery(params)}`);
+      const query = this._buildQuery(params);
+      const url = query ? `${path}?${query}` : path;
+      const headers = this._buildAuthHeaders(query);
+      const res = await this.http.delete(url, { headers });
       return res.data;
     } catch (err) {
       throw this._extractError(err);
@@ -108,8 +113,8 @@ class MexcClient {
     const notional    = info.filters?.find((f) => f.filterType === 'MIN_NOTIONAL');
 
     const result = {
-      qtyPrecision:   lotFilter   ? this._countDecimals(lotFilter.stepSize)    : 6,
-      pricePrecision: priceFilter ? this._countDecimals(priceFilter.tickSize)  : 2,
+      qtyPrecision:   lotFilter   ? this._countDecimals(lotFilter.stepSize)   : 6,
+      pricePrecision: priceFilter ? this._countDecimals(priceFilter.tickSize) : 2,
       minQty:         parseFloat(lotFilter?.minQty   || '0'),
       stepSize:       parseFloat(lotFilter?.stepSize || '0.001'),
       tickSize:       parseFloat(priceFilter?.tickSize || '0.01'),
@@ -169,7 +174,6 @@ class MexcClient {
   }
 
   async placeOrder({ symbol, side, type = 'LIMIT', price, quantity }) {
-    // Fetch symbol precision and validate/format values
     const info = await this.getSymbolInfo(symbol);
 
     const qty = this._roundToStep(quantity, info.stepSize);
@@ -195,7 +199,7 @@ class MexcClient {
       const notional = parseFloat(params.price) * qty;
       if (info.minNotional > 0 && notional < info.minNotional) {
         throw new Error(
-          `Order notional ${notional.toFixed(4)} USDT is below minNotional ` +
+          `Order notional ${notional.toFixed(4)} is below minNotional ` +
           `${info.minNotional} for ${symbol}`
         );
       }
@@ -208,9 +212,7 @@ class MexcClient {
       );
       return {
         orderId: `DRY-${Date.now()}`,
-        symbol,
-        side,
-        type,
+        symbol, side, type,
         price: params.price,
         origQty: params.quantity,
         status: 'DRY_RUN',
