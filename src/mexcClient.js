@@ -58,9 +58,10 @@ class MexcClient {
 
   async _post(path, params = {}) {
     try {
-      const query = this._sign(params);
-      // Pass empty string body so axios keeps Content-Type: application/x-www-form-urlencoded
-      const res = await this.http.post(`${path}?${query}`, '');
+      const body = this._sign(params);
+      const res = await this.http.post(path, body, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
       return res.data;
     } catch (err) {
       throw this._extractError(err);
